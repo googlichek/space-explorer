@@ -7,7 +7,9 @@
         public const float SecondsPerFrame = 1f / TargetFrameRate;
 
         public const int DynamicGridSize = 5;
-        public const int ChunkSize = 100;
+        public const int ChunkSize = 200;
+
+        public const int MaxRating = 10000;
 
         public const int DynamicGridCorrection = DynamicGridSize / 2;
 

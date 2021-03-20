@@ -16,11 +16,17 @@ namespace Game.Scripts
         private readonly List<ITick> _normalPriorityTicks = new List<ITick>();
         private readonly List<ITick> _highPriorityTicks = new List<ITick>();
 
+        private SpaceshipController _spaceshipController = default;
+        private CameraController _cameraController = default;
+
         private int _instanceCounter;
         private int _tick;
 
         public InputWrapper InputWrapper => _inputWrapper;
         public PoolManager PoolManager => _poolManager;
+
+        public SpaceshipController SpaceshipController => _spaceshipController;
+        public CameraController CameraController => _cameraController;
 
         public int Tick => _tick;
 
@@ -33,13 +39,19 @@ namespace Game.Scripts
 
             Time.fixedDeltaTime = Constants.SecondsPerFrame;
 
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            //Cursor.lockState = CursorLockMode.Locked;
+            //Cursor.visible = false;
         }
 
         private void OnEnable()
         {
             Instantiate(_rewired, transform);
+
+            if (_spaceshipController == null)
+                _spaceshipController = FindObjectOfType<SpaceshipController>();
+
+            if (_cameraController == null)
+                _cameraController = FindObjectOfType<CameraController>();
         }
 
         private void FixedUpdate()
