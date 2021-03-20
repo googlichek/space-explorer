@@ -5,16 +5,20 @@ namespace Game.Scripts
 {
     public class SpaceChunk
     {
-        private readonly SpaceCell[,] _cells = new SpaceCell[Constants.ChunkSize, Constants.ChunkSize];
+        private readonly SpaceCell[,] _dynamicCells = new SpaceCell[Constants.DynamicChunkSize, Constants.DynamicChunkSize];
 
         private Vector2Int _coords;
 
-        public SpaceCell[,] Cells => _cells;
+        public SpaceCell[,] DynamicCells => _dynamicCells;
 
         public Vector2Int Coords => _coords;
 
-        public SpaceChunk(int x, int y)
+        private int _seed;
+
+        public SpaceChunk(int seed, int x, int y)
         {
+            _seed = seed;
+
             Update(x, y);
         }
 
@@ -23,9 +27,9 @@ namespace Game.Scripts
             _coords.x = x;
             _coords.y = y;
 
-            Parallel.For(0, Constants.DynamicGridSize, i =>
+            Parallel.For(0, Constants.DynamicChunkSize, i =>
             {
-                Parallel.For(0, Constants.DynamicGridSize, j =>
+                Parallel.For(0, Constants.DynamicChunkSize, j =>
                 {
                     UpdateCell(i, j);
                 });
@@ -34,14 +38,20 @@ namespace Game.Scripts
 
         private void UpdateCell(int x, int y)
         {
-            var noise = Mathf.PerlinNoise(_coords.x + x, _coords.y + y);
-            var hasPlanet = noise <= Constants.PlanetChance;
+            var xCoord = _seed + _coords.x * Constants.DynamicChunkSize + x - Constants.PlanetChance;
+            var yCoord = _seed + _coords.y * Constants.DynamicChunkSize + y - Constants.PlanetChance;
+            var noise = Mathf.PerlinNoise(xCoord, yCoord);
 
-            var rating = -1;
+            var ratingNoise = Mathf.RoundToInt(noise * Constants.MaxRating);
+            var rating = 0;
+
+            var hasPlanet = (_seed + x + y + (_coords.x + _coords.y) * Constants.DynamicChunkSize) % 3 == 0;
             if (hasPlanet)
-                rating = Mathf.Clamp(Mathf.RoundToInt(noise * Constants.MaxRating), 0, Constants.MaxRating);
+            {
+                rating = Mathf.Clamp(ratingNoise, 0, Constants.MaxRating);
+            }
 
-            _cells[x, y].Update(x, y, rating);
+            _dynamicCells[x, y].Update(x, y, rating);
         }
     }
 }

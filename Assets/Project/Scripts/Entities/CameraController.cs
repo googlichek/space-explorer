@@ -8,6 +8,8 @@ namespace Game.Scripts
 
         private Vector3 _position;
 
+        public float Height => _camera.orthographicSize * 2;
+
         public override void Init()
         {
             base.Init();

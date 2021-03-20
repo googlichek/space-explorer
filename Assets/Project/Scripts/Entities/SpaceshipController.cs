@@ -26,25 +26,25 @@ namespace Game.Scripts
         {
             base.CameraTick();
 
-            if (GameManager.Instance.InputWrapper.IsMoveUpPressed)
+            if (GameManager.Instance.InputWrapper.IsMoveUpHeld)
             {
                 Move(0, 1);
                 Rotate(0);
             }
 
-            if (GameManager.Instance.InputWrapper.IsMoveDownPressed)
+            if (GameManager.Instance.InputWrapper.IsMoveDownHeld)
             {
                 Move(0, -1);
                 Rotate(180);
             }
             
-            if (GameManager.Instance.InputWrapper.IsMoveRightPressed)
+            if (GameManager.Instance.InputWrapper.IsMoveRightHeld)
             {
                 Move(1, 0);
                 Rotate(270);
             }
 
-            if (GameManager.Instance.InputWrapper.IsMoveLeftPressed)
+            if (GameManager.Instance.InputWrapper.IsMoveLeftHeld)
             {
                 Move(-1, 0);
                 Rotate(90);

@@ -18,6 +18,7 @@ namespace Game.Scripts
 
         private SpaceshipController _spaceshipController = default;
         private CameraController _cameraController = default;
+        private GridController _gridController = default;
 
         private int _instanceCounter;
         private int _tick;
@@ -27,6 +28,7 @@ namespace Game.Scripts
 
         public SpaceshipController SpaceshipController => _spaceshipController;
         public CameraController CameraController => _cameraController;
+        public GridController GridController => _gridController;
 
         public int Tick => _tick;
 
@@ -52,6 +54,9 @@ namespace Game.Scripts
 
             if (_cameraController == null)
                 _cameraController = FindObjectOfType<CameraController>();
+            
+            if (_gridController == null)
+                _gridController = FindObjectOfType<GridController>();
         }
 
         private void FixedUpdate()
