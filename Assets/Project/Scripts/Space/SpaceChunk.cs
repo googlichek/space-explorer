@@ -47,11 +47,12 @@ namespace Game.Scripts
 
             var hasPlanet = (_seed + x + y + (_coords.x + _coords.y) * Constants.DynamicChunkSize) % 3 == 0;
             if (hasPlanet)
-            {
-                rating = Mathf.Clamp(ratingNoise, 0, Constants.MaxRating);
-            }
+                rating = _seed * ratingNoise % Constants.MaxRating;
 
-            _dynamicCells[x, y].Update(x, y, rating);
+            var absoluteCellX = _coords.x * Constants.DynamicChunkSize + x;
+            var absoluteCellY = _coords.y * Constants.DynamicChunkSize + y;
+
+            _dynamicCells[x, y].Update(x, y, absoluteCellX, absoluteCellY, rating);
         }
     }
 }

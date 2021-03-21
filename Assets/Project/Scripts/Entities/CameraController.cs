@@ -8,7 +8,7 @@ namespace Game.Scripts
 
         private Vector3 _position;
 
-        public float Height => _camera.orthographicSize * 2;
+        public int Height => Mathf.Clamp(Mathf.CeilToInt(_camera.orthographicSize * 2), 5, Constants.MaxRating);
 
         public override void Init()
         {

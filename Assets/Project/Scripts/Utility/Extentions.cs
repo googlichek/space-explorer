@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Threading.Tasks;
+using UnityEngine;
 
 namespace Game.Scripts
 {
@@ -19,6 +20,11 @@ namespace Game.Scripts
         public static bool IsEqual(this Vector2Int a, Vector2Int b)
         {
             return (a - b).sqrMagnitude <= 0;
+        }
+
+        public static async void WrapErrors(this Task task)
+        {
+            await task;
         }
     }
 }

@@ -1,28 +1,40 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 namespace Game.Scripts
 {
     public class GridController : TickBehaviour
     {
-        private static readonly List<SpaceCell> _closestPlanets = new List<SpaceCell>();
+        private static readonly List<SpaceCellRatingDifferencePair> _closestPlanets = new List<SpaceCellRatingDifferencePair>();
 
         private readonly SpaceChunk[,] _dynamicChunks = new SpaceChunk[Constants.DynamicGridSize, Constants.DynamicGridSize];
 
         private Vector2Int _currentChunkCoords = Vector2Int.down;
         private Vector2Int _currentPlayerCoords = Vector2Int.down;
 
-        public Vector2Int CurrentChunkCoords => _currentChunkCoords;
-        public Vector2Int CurrentPlayerCoords => _currentPlayerCoords;
+        private Vector3 _visibleBoundsSize;
+        private Vector3 _visibleBoundsCenter;
+        private Vector3 _visibleBoundsCheckPoint;
+        private Bounds _visibleBounds;
 
         private int _seed;
+        private int _currentVisibleHeight;
+
+        private bool _shouldUpdateClosestPlanetes = false;
+        private bool _shouldRedrawClosestPlanetes = false;
+
+        public Vector2Int CurrentChunkCoords => _currentChunkCoords;
+        public Vector2Int CurrentPlayerCoords => _currentPlayerCoords;
 
         public override void Enable()
         {
             base.Enable();
 
             _seed = Random.Range(0, Constants.MaxRating);
+
+            UpdateGrid().WrapErrors();
         }
 
         public override void Tick()
@@ -38,6 +50,14 @@ namespace Game.Scripts
             if (!_currentPlayerCoords.IsEqual(playerCoords))
             {
                 _currentPlayerCoords = playerCoords;
+                _shouldUpdateClosestPlanetes = true;
+            }
+
+            var currentHeight = GameManager.Instance.CameraController.Height;
+            if (_currentVisibleHeight != currentHeight)
+            {
+                _currentVisibleHeight = currentHeight;
+                _shouldUpdateClosestPlanetes = true;
             }
 
             var chunkCoords = GetCurrentChunkCoords();
@@ -45,7 +65,15 @@ namespace Game.Scripts
             {
                 _currentChunkCoords = chunkCoords;
 
-                UpdateGrid();
+                UpdateGrid().WrapErrors();
+            }
+
+            if (_shouldUpdateClosestPlanetes)
+            {
+                _shouldUpdateClosestPlanetes = false;
+
+                UpdateVisibleBounds();
+                UpdateClosestPlanets().WrapErrors();
             }
         }
 
@@ -72,40 +100,91 @@ namespace Game.Scripts
             return new Vector2Int(positionX, positionY);
         }
 
-        private void UpdateGrid()
+        private void UpdateVisibleBounds()
+        {
+            _visibleBoundsSize.x = GameManager.Instance.CameraController.Height;
+            _visibleBoundsSize.y = GameManager.Instance.CameraController.Height;
+
+            _visibleBoundsCenter.x = _currentPlayerCoords.x;
+            _visibleBoundsCenter.y = _currentPlayerCoords.y;
+
+            _visibleBounds.size = _visibleBoundsSize;
+            _visibleBounds.center = _visibleBoundsCenter;
+        }
+
+        private async Task UpdateGrid()
         {
             //Profiler.BeginSample("UpdateCells");
 
-            Parallel.For(0, Constants.DynamicGridSize, i =>
+            var updateGridTask = Task.Run(() =>
             {
-                Parallel.For(0, Constants.DynamicGridSize, j =>
+                Parallel.For(0, Constants.DynamicGridSize, i =>
                 {
-                    if (_dynamicChunks[i, j] == null)
+                    Parallel.For(0, Constants.DynamicGridSize, j =>
                     {
-                        _dynamicChunks[i, j] = new SpaceChunk(_seed, i + _currentChunkCoords.x - Constants.DynamicGridCorrection, j + _currentChunkCoords.y - Constants.DynamicGridCorrection);
-                    }
-                    else
-                    {
-                        _dynamicChunks[i, j].Update(i + _currentChunkCoords.x - Constants.DynamicGridCorrection, j + _currentChunkCoords.y - Constants.DynamicGridCorrection);
-                    }
+                        UpdateChunk(i, j);
+                    });
                 });
-            });
+            }).ContinueWith(dirtyFlagTask => { _shouldUpdateClosestPlanetes = true; }).ConfigureAwait(false);
+
+            await updateGridTask;
 
             //Profiler.EndSample();
         }
 
-        private void UpdateClosestPlanets()
+        private void UpdateChunk(int x, int y)
+        {
+            if (_dynamicChunks[x, y] == null)
+            {
+                _dynamicChunks[x, y] = new SpaceChunk(_seed, x + _currentChunkCoords.x - Constants.DynamicGridCorrection, y + _currentChunkCoords.y - Constants.DynamicGridCorrection);
+            }
+            else
+            {
+                _dynamicChunks[x, y].Update(x + _currentChunkCoords.x - Constants.DynamicGridCorrection, y + _currentChunkCoords.y - Constants.DynamicGridCorrection);
+            }
+        }
+
+        private async Task UpdateClosestPlanets()
         {
             _closestPlanets.Clear();
+            var index = 0;
 
-            foreach (var chunk in _dynamicChunks)
+            var updateClosestPlanetsTask = Task.Run(() =>
             {
-                foreach (var cell in chunk.DynamicCells)
+                foreach (var chunk in _dynamicChunks)
                 {
-                    if (cell.Rating > 0)
-                        _closestPlanets.Add(cell);
+                    foreach (var cell in chunk.DynamicCells)
+                    {
+                        _visibleBoundsCheckPoint.x = cell.Coords.x;
+                        _visibleBoundsCheckPoint.y = cell.Coords.y;
+
+                        if (cell.HasPlanet && _visibleBounds.Contains(_visibleBoundsCheckPoint))
+                        {
+                            var difference = Mathf.Abs(cell.Rating - GameManager.Instance.SpaceshipController.Rating);
+
+                            if (index >= Constants.MaxPlanets)
+                            {
+                                if (difference > _closestPlanets[0].RatingDifference)
+                                    continue;
+
+                                _closestPlanets.RemoveAt(0);
+                                _closestPlanets.Add(new SpaceCellRatingDifferencePair(difference, cell));
+                                _closestPlanets.Sort((x, y) => x.RatingDifference.CompareTo(y.RatingDifference));
+                                _closestPlanets.Reverse();
+                            }
+                            else
+                            {
+                                _closestPlanets.Add(new SpaceCellRatingDifferencePair(difference, cell));
+                                _closestPlanets.Sort((x, y) => x.RatingDifference.CompareTo(y.RatingDifference));
+
+                                index++;
+                            }
+                        }
+                    }
                 }
-            }
+            }).ContinueWith(dirtyFlagTask => { _shouldRedrawClosestPlanetes = true; }).ConfigureAwait(false);
+
+            await updateClosestPlanetsTask;
         }
     }
 }
