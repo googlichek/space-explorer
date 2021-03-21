@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.Profiling;
 using Random = UnityEngine.Random;
 
 namespace Game.Scripts
@@ -10,6 +11,9 @@ namespace Game.Scripts
         private static readonly List<SpaceCellRatingDifferencePair> _closestPlanets = new List<SpaceCellRatingDifferencePair>();
 
         private readonly SpaceChunk[,] _dynamicChunks = new SpaceChunk[Constants.DynamicGridSize, Constants.DynamicGridSize];
+
+        private Task _updateGridTask;
+        private Task _updateClosestPlanetsTask;
 
         private Vector2Int _currentChunkCoords = Vector2Int.down;
         private Vector2Int _currentPlayerCoords = Vector2Int.down;
@@ -22,8 +26,8 @@ namespace Game.Scripts
         private int _seed;
         private int _currentVisibleHeight;
 
-        private bool _shouldUpdateClosestPlanetes = false;
-        private bool _shouldRedrawClosestPlanetes = false;
+        private bool _shouldUpdateClosestPlanets = false;
+        private bool _shouldRedrawClosestPlanets = false;
 
         public Vector2Int CurrentChunkCoords => _currentChunkCoords;
         public Vector2Int CurrentPlayerCoords => _currentPlayerCoords;
@@ -33,8 +37,6 @@ namespace Game.Scripts
             base.Enable();
 
             _seed = Random.Range(0, Constants.MaxRating);
-
-            UpdateGrid().WrapErrors();
         }
 
         public override void Tick()
@@ -50,30 +52,32 @@ namespace Game.Scripts
             if (!_currentPlayerCoords.IsEqual(playerCoords))
             {
                 _currentPlayerCoords = playerCoords;
-                _shouldUpdateClosestPlanetes = true;
+                _shouldUpdateClosestPlanets = true;
             }
 
             var currentHeight = GameManager.Instance.CameraController.Height;
             if (_currentVisibleHeight != currentHeight)
             {
                 _currentVisibleHeight = currentHeight;
-                _shouldUpdateClosestPlanetes = true;
+                _shouldUpdateClosestPlanets = true;
             }
 
             var chunkCoords = GetCurrentChunkCoords();
-            if (!_currentChunkCoords.IsEqual(chunkCoords))
+            if ((_updateGridTask == null || _updateGridTask.IsCompleted) &&
+                !_currentChunkCoords.IsEqual(chunkCoords))
             {
                 _currentChunkCoords = chunkCoords;
 
-                UpdateGrid().WrapErrors();
+                UpdateGridTask().WrapErrors();
             }
 
-            if (_shouldUpdateClosestPlanetes)
+            if ((_updateClosestPlanetsTask == null || _updateClosestPlanetsTask.IsCompleted) &&
+                _shouldUpdateClosestPlanets)
             {
-                _shouldUpdateClosestPlanetes = false;
+                _shouldUpdateClosestPlanets = false;
 
                 UpdateVisibleBounds();
-                UpdateClosestPlanets().WrapErrors();
+                UpdateClosestPlanetsTask().WrapErrors();
             }
         }
 
@@ -112,22 +116,25 @@ namespace Game.Scripts
             _visibleBounds.center = _visibleBoundsCenter;
         }
 
-        private async Task UpdateGrid()
+        private async Task UpdateGridTask()
         {
             //Profiler.BeginSample("UpdateCells");
 
-            var updateGridTask = Task.Run(() =>
-            {
-                Parallel.For(0, Constants.DynamicGridSize, i =>
-                {
-                    Parallel.For(0, Constants.DynamicGridSize, j =>
+            _updateGridTask =
+                Task
+                    .Run(() =>
                     {
-                        UpdateChunk(i, j);
-                    });
-                });
-            }).ContinueWith(dirtyFlagTask => { _shouldUpdateClosestPlanetes = true; }).ConfigureAwait(false);
+                        Parallel.For(0, Constants.DynamicGridSize, i =>
+                        {
+                            Parallel.For(0, Constants.DynamicGridSize, j =>
+                            {
+                                UpdateChunk(i, j);
+                            });
+                        });
+                    })
+                    .ContinueWith(dirtyFlagTask => { _shouldUpdateClosestPlanets = true; });
 
-            await updateGridTask;
+            await _updateGridTask.ConfigureAwait(false);
 
             //Profiler.EndSample();
         }
@@ -144,47 +151,55 @@ namespace Game.Scripts
             }
         }
 
-        private async Task UpdateClosestPlanets()
+        private async Task UpdateClosestPlanetsTask()
         {
+            //Profiler.BeginSample("UpdateClosestPlanets");
+
             _closestPlanets.Clear();
+            _updateClosestPlanetsTask =
+                Task
+                    .Run(UpdateClosestPlanets)
+                    .ContinueWith(dirtyFlagTask => { _shouldRedrawClosestPlanets = true; });
+
+            await _updateClosestPlanetsTask.ConfigureAwait(false);
+
+            //Profiler.EndSample();
+        }
+
+        private void UpdateClosestPlanets()
+        {
             var index = 0;
-
-            var updateClosestPlanetsTask = Task.Run(() =>
+            foreach (var chunk in _dynamicChunks)
             {
-                foreach (var chunk in _dynamicChunks)
+                foreach (var cell in chunk.DynamicCells)
                 {
-                    foreach (var cell in chunk.DynamicCells)
+                    _visibleBoundsCheckPoint.x = cell.Coords.x;
+                    _visibleBoundsCheckPoint.y = cell.Coords.y;
+
+                    if (cell.HasPlanet && _visibleBounds.Contains(_visibleBoundsCheckPoint))
                     {
-                        _visibleBoundsCheckPoint.x = cell.Coords.x;
-                        _visibleBoundsCheckPoint.y = cell.Coords.y;
+                        var difference = Mathf.Abs(cell.Rating - GameManager.Instance.SpaceshipController.Rating);
 
-                        if (cell.HasPlanet && _visibleBounds.Contains(_visibleBoundsCheckPoint))
+                        if (index >= Constants.MaxPlanets)
                         {
-                            var difference = Mathf.Abs(cell.Rating - GameManager.Instance.SpaceshipController.Rating);
+                            if (difference > _closestPlanets[0].RatingDifference)
+                                continue;
 
-                            if (index >= Constants.MaxPlanets)
-                            {
-                                if (difference > _closestPlanets[0].RatingDifference)
-                                    continue;
+                            _closestPlanets.RemoveAt(0);
+                            _closestPlanets.Add(new SpaceCellRatingDifferencePair(difference, cell));
+                            _closestPlanets.Sort((x, y) => x.RatingDifference.CompareTo(y.RatingDifference));
+                            _closestPlanets.Reverse();
+                        }
+                        else
+                        {
+                            _closestPlanets.Add(new SpaceCellRatingDifferencePair(difference, cell));
+                            _closestPlanets.Sort((x, y) => x.RatingDifference.CompareTo(y.RatingDifference));
 
-                                _closestPlanets.RemoveAt(0);
-                                _closestPlanets.Add(new SpaceCellRatingDifferencePair(difference, cell));
-                                _closestPlanets.Sort((x, y) => x.RatingDifference.CompareTo(y.RatingDifference));
-                                _closestPlanets.Reverse();
-                            }
-                            else
-                            {
-                                _closestPlanets.Add(new SpaceCellRatingDifferencePair(difference, cell));
-                                _closestPlanets.Sort((x, y) => x.RatingDifference.CompareTo(y.RatingDifference));
-
-                                index++;
-                            }
+                            index++;
                         }
                     }
                 }
-            }).ContinueWith(dirtyFlagTask => { _shouldRedrawClosestPlanetes = true; }).ConfigureAwait(false);
-
-            await updateClosestPlanetsTask;
+            }
         }
     }
 }
