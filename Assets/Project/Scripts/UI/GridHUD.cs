@@ -8,9 +8,11 @@ namespace Game.Scripts
     {
         private const string ChunkCoordsText = "Chunk Coords: ";
         private const string PlayerCoordsText = "Player Coords: ";
+        private const string CellsHeightText = "Cells Height: ";
 
         [SerializeField] private Text _chunkCoordsText = default;
         [SerializeField] private Text _playerCoordsText = default;
+        [SerializeField] private Text _cellsHeightText = default;
 
         [Space]
 
@@ -20,9 +22,9 @@ namespace Game.Scripts
 
         private PlanetIndicatorUIController _spaceshipIndicator;
 
-        public override void CameraTick()
+        public override void Tick()
         {
-            base.CameraTick();
+            base.Tick();
 
             UpdateHelperTexts();
             UpdateSpaceshipPosition();
@@ -84,6 +86,9 @@ namespace Game.Scripts
 
             _playerCoordsText.text =
                 string.Format($"{PlayerCoordsText}{GameManager.Instance.GridController.CurrentPlayerCoords}");
+
+            _cellsHeightText.text =
+                string.Format($"{CellsHeightText}{GameManager.Instance.CameraController.Height}");
         }
 
         private void UpdateSpaceshipPosition()
