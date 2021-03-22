@@ -11,6 +11,7 @@ namespace Game.Scripts
 
         [SerializeField] private InputWrapper _inputWrapper = null;
         [SerializeField] private PoolManager _poolManager = null;
+        [SerializeField] private GridHUD _gridHUD = null;
 
         private readonly List<ITick> _lowPriorityTicks = new List<ITick>();
         private readonly List<ITick> _normalPriorityTicks = new List<ITick>();
@@ -25,6 +26,7 @@ namespace Game.Scripts
 
         public InputWrapper InputWrapper => _inputWrapper;
         public PoolManager PoolManager => _poolManager;
+        public GridHUD GridHUD => _gridHUD;
 
         public SpaceshipController SpaceshipController => _spaceshipController;
         public CameraController CameraController => _cameraController;

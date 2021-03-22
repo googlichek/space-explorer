@@ -22,33 +22,45 @@ namespace Game.Scripts
             _rating = Random.Range(0, Constants.MaxRating);
         }
 
+        public override void Enable()
+        {
+            base.Enable();
+
+            GameManager.Instance.GridHUD.CreateSpaceshipIndicator();
+        }
+
         public override void Tick()
         {
             base.CameraTick();
 
-            if (GameManager.Instance.InputWrapper.IsMoveUpHeld)
+            if (GameManager.Instance.InputWrapper.IsMoveUpPressed)
             {
                 Move(0, 1);
                 Rotate(0);
             }
 
-            if (GameManager.Instance.InputWrapper.IsMoveDownHeld)
+            if (GameManager.Instance.InputWrapper.IsMoveDownPressed)
             {
                 Move(0, -1);
                 Rotate(180);
             }
             
-            if (GameManager.Instance.InputWrapper.IsMoveRightHeld)
+            if (GameManager.Instance.InputWrapper.IsMoveRightPressed)
             {
                 Move(1, 0);
                 Rotate(270);
             }
 
-            if (GameManager.Instance.InputWrapper.IsMoveLeftHeld)
+            if (GameManager.Instance.InputWrapper.IsMoveLeftPressed)
             {
                 Move(-1, 0);
                 Rotate(90);
             }
+
+            transform.localScale =
+                GameManager.Instance.CameraController.Camera.orthographicSize.IsEqual(Constants.OrtographicSizeMin)
+                    ? Vector3.one
+                    : Vector3.one * Mathf.RoundToInt(GameManager.Instance.CameraController.Camera.orthographicSize / Constants.OrtographicSizeMin) / 3;
         }
 
         private void Move(int x, int y)

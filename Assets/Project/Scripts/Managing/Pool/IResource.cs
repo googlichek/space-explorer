@@ -6,6 +6,5 @@ namespace Game.Scripts
     {
         GameObject GameObject { get; }
         ResourceType Type { get; }
-        bool IsValid { get; }
     }
 }

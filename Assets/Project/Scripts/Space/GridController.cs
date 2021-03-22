@@ -8,9 +8,13 @@ namespace Game.Scripts
 {
     public class GridController : TickBehaviour
     {
-        private static readonly List<SpaceCellRatingDifferencePair> _closestPlanets = new List<SpaceCellRatingDifferencePair>();
+        [SerializeField] private PlanetController _planetTemplate = default;
+
+        private readonly List<SpaceCellRatingDifferencePair> _closestPlanets = new List<SpaceCellRatingDifferencePair>();
 
         private readonly SpaceChunk[,] _dynamicChunks = new SpaceChunk[Constants.DynamicGridSize, Constants.DynamicGridSize];
+
+        private readonly List<IResource> _planetsOnScreen = new List<IResource>();
 
         private Task _updateGridTask;
         private Task _updateClosestPlanetsTask;
@@ -48,20 +52,15 @@ namespace Game.Scripts
 
         private void UpdateState()
         {
-            var playerCoords = GetPlayerCoords();
-            if (!_currentPlayerCoords.IsEqual(playerCoords))
-            {
-                _currentPlayerCoords = playerCoords;
-                _shouldUpdateClosestPlanets = true;
-            }
+            UpdatePlayerCoords();
+            UpdateCurrentCellHeight();
+            UpdateGrid();
+            UpdateVisiblePlanets();
+            RedrawPlanets();
+        }
 
-            var currentHeight = GameManager.Instance.CameraController.Height;
-            if (_currentVisibleHeight != currentHeight)
-            {
-                _currentVisibleHeight = currentHeight;
-                _shouldUpdateClosestPlanets = true;
-            }
-
+        private void UpdateGrid()
+        {
             var chunkCoords = GetCurrentChunkCoords();
             if ((_updateGridTask == null || _updateGridTask.IsCompleted) &&
                 !_currentChunkCoords.IsEqual(chunkCoords))
@@ -70,14 +69,15 @@ namespace Game.Scripts
 
                 UpdateGridTask().WrapErrors();
             }
+        }
 
-            if ((_updateClosestPlanetsTask == null || _updateClosestPlanetsTask.IsCompleted) &&
-                _shouldUpdateClosestPlanets)
+        private void UpdatePlayerCoords()
+        {
+            var playerCoords = GetPlayerCoords();
+            if (!_currentPlayerCoords.IsEqual(playerCoords))
             {
-                _shouldUpdateClosestPlanets = false;
-
-                UpdateVisibleBounds();
-                UpdateClosestPlanetsTask().WrapErrors();
+                _currentPlayerCoords = playerCoords;
+                _shouldUpdateClosestPlanets = true;
             }
         }
 
@@ -89,31 +89,29 @@ namespace Game.Scripts
             return new Vector2Int(playerCoordsX, playerCoordsY);
         }
 
+        private void UpdateCurrentCellHeight()
+        {
+            var currentHeight = GameManager.Instance.CameraController.Height;
+            if (_currentVisibleHeight != currentHeight)
+            {
+                _currentVisibleHeight = currentHeight;
+                _shouldUpdateClosestPlanets = true;
+            }
+        }
+
         private Vector2Int GetCurrentChunkCoords()
         {
             var positionX =
                 _currentPlayerCoords.x >= 0
                     ? _currentPlayerCoords.x / Constants.DynamicChunkSize
                     : _currentPlayerCoords.x / Constants.DynamicChunkSize - 1;
-            
+
             var positionY =
                 _currentPlayerCoords.y >= 0
                     ? _currentPlayerCoords.y / Constants.DynamicChunkSize
                     : _currentPlayerCoords.y / Constants.DynamicChunkSize - 1;
 
             return new Vector2Int(positionX, positionY);
-        }
-
-        private void UpdateVisibleBounds()
-        {
-            _visibleBoundsSize.x = GameManager.Instance.CameraController.Height;
-            _visibleBoundsSize.y = GameManager.Instance.CameraController.Height;
-
-            _visibleBoundsCenter.x = _currentPlayerCoords.x;
-            _visibleBoundsCenter.y = _currentPlayerCoords.y;
-
-            _visibleBounds.size = _visibleBoundsSize;
-            _visibleBounds.center = _visibleBoundsCenter;
         }
 
         private async Task UpdateGridTask()
@@ -134,7 +132,7 @@ namespace Game.Scripts
                     })
                     .ContinueWith(dirtyFlagTask => { _shouldUpdateClosestPlanets = true; });
 
-            await _updateGridTask.ConfigureAwait(false);
+            await _updateGridTask;
 
             //Profiler.EndSample();
         }
@@ -151,6 +149,30 @@ namespace Game.Scripts
             }
         }
 
+        private void UpdateVisiblePlanets()
+        {
+            if ((_updateClosestPlanetsTask == null || _updateClosestPlanetsTask.IsCompleted) &&
+                _shouldUpdateClosestPlanets)
+            {
+                _shouldUpdateClosestPlanets = false;
+
+                UpdateVisibleBounds();
+                UpdateClosestPlanetsTask().WrapErrors();
+            }
+        }
+
+        private void UpdateVisibleBounds()
+        {
+            _visibleBoundsSize.x = GameManager.Instance.CameraController.Height;
+            _visibleBoundsSize.y = GameManager.Instance.CameraController.Height;
+
+            _visibleBoundsCenter.x = _currentPlayerCoords.x;
+            _visibleBoundsCenter.y = _currentPlayerCoords.y;
+
+            _visibleBounds.size = _visibleBoundsSize;
+            _visibleBounds.center = _visibleBoundsCenter;
+        }
+
         private async Task UpdateClosestPlanetsTask()
         {
             //Profiler.BeginSample("UpdateClosestPlanets");
@@ -161,7 +183,7 @@ namespace Game.Scripts
                     .Run(UpdateClosestPlanets)
                     .ContinueWith(dirtyFlagTask => { _shouldRedrawClosestPlanets = true; });
 
-            await _updateClosestPlanetsTask.ConfigureAwait(false);
+            await _updateClosestPlanetsTask;
 
             //Profiler.EndSample();
         }
@@ -193,11 +215,36 @@ namespace Game.Scripts
                         else
                         {
                             _closestPlanets.Add(new SpaceCellRatingDifferencePair(difference, cell));
-                            _closestPlanets.Sort((x, y) => x.RatingDifference.CompareTo(y.RatingDifference));
-
-                            index++;
                         }
+
+                        index++;
                     }
+                }
+            }
+        }
+
+        private void RedrawPlanets()
+        {
+            if (_shouldRedrawClosestPlanets)
+            {
+                _shouldRedrawClosestPlanets = false;
+
+                foreach (var planet in _planetsOnScreen)
+                {
+                    GameManager.Instance.PoolManager.Despawn(planet);
+                }
+                _planetsOnScreen.Clear();
+
+                GameManager.Instance.GridHUD.ClearPlanetIndicators();
+
+                for (var i = 0; i < _closestPlanets.Count; i++)
+                {
+                    var cell = _closestPlanets[i].Cell;
+                    var planet = GameManager.Instance.PoolManager.Spawn(_planetTemplate, null, Vector3.zero, Quaternion.identity).GameObject.GetComponent<PlanetController>();
+                    planet.Setup(cell.Coords.x, cell.Coords.y);
+
+                    _planetsOnScreen.Add(planet);
+                    GameManager.Instance.GridHUD.SpawnPlanetIndicator(cell.Coords.x, cell.Coords.y, cell.Rating);
                 }
             }
         }
